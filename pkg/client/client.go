@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/gogo/protobuf/proto"
@@ -32,8 +33,9 @@ type ClientConfig struct {
 	// Number of series to generate per write request.
 	SeriesCount int
 
-	WriteInterval time.Duration
-	WriteTimeout  time.Duration
+	WriteInterval  time.Duration
+	WriteTimeout   time.Duration
+	WriteBatchSize int
 }
 
 type Client struct {
@@ -71,14 +73,32 @@ func (c *Client) run() {
 func (c *Client) writeSeries() {
 	series := generateSineWaveSeries(time.Now(), c.cfg.SeriesCount)
 
-	req := &prompb.WriteRequest{
-		Timeseries: series,
+	// Honor the batch size.
+	wg := sync.WaitGroup{}
+
+	for o := 0; o < len(series); o += c.cfg.WriteBatchSize {
+		wg.Add(1)
+
+		go func(o int) {
+			defer wg.Done()
+
+			end := o + c.cfg.WriteBatchSize
+			if end > len(series) {
+				end = len(series)
+			}
+
+			req := &prompb.WriteRequest{
+				Timeseries: series[o:end],
+			}
+
+			err := c.send(context.Background(), req)
+			if err != nil {
+				log.Println("Error while writing series: " + err.Error())
+			}
+		}(o)
 	}
 
-	err := c.send(context.Background(), req)
-	if err != nil {
-		log.Println("Error while writing series: " + err.Error())
-	}
+	wg.Wait()
 }
 
 func (c *Client) send(ctx context.Context, req *prompb.WriteRequest) error {
