@@ -7,3 +7,6 @@ build-image:
 publish-image: build-image
 	docker tag cortex-load-generator:latest pracucci/cortex-load-generator:$(GIT_BRANCH)-$(GIT_COMMIT)
 	docker push pracucci/cortex-load-generator:$(GIT_BRANCH)-$(GIT_COMMIT)
+
+run-proxy:
+	go run ./tools/proxy/
