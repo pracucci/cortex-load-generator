@@ -16,6 +16,7 @@ import (
 
 	"github.com/gogo/protobuf/proto"
 	"github.com/golang/snappy"
+	"github.com/prometheus/prometheus/pkg/gate"
 	"github.com/prometheus/prometheus/prompb"
 )
 
@@ -33,14 +34,16 @@ type ClientConfig struct {
 	// Number of series to generate per write request.
 	SeriesCount int
 
-	WriteInterval  time.Duration
-	WriteTimeout   time.Duration
-	WriteBatchSize int
+	WriteInterval    time.Duration
+	WriteTimeout     time.Duration
+	WriteConcurrency int
+	WriteBatchSize   int
 }
 
 type Client struct {
-	client *http.Client
-	cfg    ClientConfig
+	client    *http.Client
+	cfg       ClientConfig
+	writeGate *gate.Gate
 }
 
 func NewClient(cfg ClientConfig) *Client {
@@ -48,8 +51,9 @@ func NewClient(cfg ClientConfig) *Client {
 	rt = &clientRoundTripper{userID: cfg.UserID, rt: rt}
 
 	c := &Client{
-		client: &http.Client{Transport: rt},
-		cfg:    cfg,
+		client:    &http.Client{Transport: rt},
+		cfg:       cfg,
+		writeGate: gate.New(cfg.WriteConcurrency),
 	}
 
 	go c.run()
@@ -82,6 +86,11 @@ func (c *Client) writeSeries() {
 		go func(o int) {
 			defer wg.Done()
 
+			// Honow the max concurrency
+			ctx := context.Background()
+			c.writeGate.Start(ctx)
+			defer c.writeGate.Done()
+
 			end := o + c.cfg.WriteBatchSize
 			if end > len(series) {
 				end = len(series)
@@ -91,7 +100,7 @@ func (c *Client) writeSeries() {
 				Timeseries: series[o:end],
 			}
 
-			err := c.send(context.Background(), req)
+			err := c.send(ctx, req)
 			if err != nil {
 				log.Println("Error while writing series: " + err.Error())
 			}
