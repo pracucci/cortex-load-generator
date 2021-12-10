@@ -24,7 +24,7 @@ const (
 	maxErrMsgLen = 256
 )
 
-type ClientConfig struct {
+type WriteClientConfig struct {
 	// Cortex URL.
 	URL url.URL
 
@@ -40,17 +40,17 @@ type ClientConfig struct {
 	WriteBatchSize   int
 }
 
-type Client struct {
+type WriteClient struct {
 	client    *http.Client
-	cfg       ClientConfig
+	cfg       WriteClientConfig
 	writeGate *gate.Gate
 }
 
-func NewClient(cfg ClientConfig) *Client {
+func NewWriteClient(cfg WriteClientConfig) *WriteClient {
 	var rt http.RoundTripper = &http.Transport{}
 	rt = &clientRoundTripper{userID: cfg.UserID, rt: rt}
 
-	c := &Client{
+	c := &WriteClient{
 		client:    &http.Client{Transport: rt},
 		cfg:       cfg,
 		writeGate: gate.New(cfg.WriteConcurrency),
@@ -61,7 +61,7 @@ func NewClient(cfg ClientConfig) *Client {
 	return c
 }
 
-func (c *Client) run() {
+func (c *WriteClient) run() {
 	c.writeSeries()
 
 	ticker := time.NewTicker(c.cfg.WriteInterval)
@@ -74,7 +74,7 @@ func (c *Client) run() {
 	}
 }
 
-func (c *Client) writeSeries() {
+func (c *WriteClient) writeSeries() {
 	series := generateSineWaveSeries(time.Now(), c.cfg.SeriesCount)
 
 	// Honor the batch size.
@@ -110,7 +110,7 @@ func (c *Client) writeSeries() {
 	wg.Wait()
 }
 
-func (c *Client) send(ctx context.Context, req *prompb.WriteRequest) error {
+func (c *WriteClient) send(ctx context.Context, req *prompb.WriteRequest) error {
 	data, err := proto.Marshal(req)
 	if err != nil {
 		return err

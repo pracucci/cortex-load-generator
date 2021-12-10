@@ -27,12 +27,12 @@ func main() {
 	kingpin.Parse()
 
 	// Start a client for each tenant.
-	clients := make([]*client.Client, 0, *tenantsCount)
+	clients := make([]*client.WriteClient, 0, *tenantsCount)
 	wg := sync.WaitGroup{}
 	wg.Add(*tenantsCount)
 
 	for t := 1; t <= *tenantsCount; t++ {
-		clients = append(clients, client.NewClient(client.ClientConfig{
+		clients = append(clients, client.NewWriteClient(client.WriteClientConfig{
 			URL:              **remoteURL,
 			WriteInterval:    *remoteWriteInterval,
 			WriteTimeout:     *remoteWriteTimeout,
