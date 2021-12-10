@@ -20,7 +20,7 @@ var (
 	remoteWriteTimeout     = kingpin.Flag("remote-write-timeout", "Remote endpoint write timeout.").Default("5s").Duration()
 	remoteWriteConcurrency = kingpin.Flag("remote-write-concurrency", "The max number of concurrent batch write requests per tenant.").Default("10").Int()
 	remoteBatchSize        = kingpin.Flag("remote-batch-size", "how many samples to send with each write request.").Default("1000").Int()
-	queryEnabled           = kingpin.Flag("query-enabled", "True to run queries to assess correctness").Default("false").Bool()
+	queryEnabled           = kingpin.Flag("query-enabled", "True to run queries to assess correctness").Default("false").Enum("true", "false")
 	queryURL               = kingpin.Flag("query-url", "Base URL of the query endpoint.").String()
 	queryInterval          = kingpin.Flag("query-interval", "Frequency to query each tenant.").Default("10s").Duration()
 	queryTimeout           = kingpin.Flag("query-timeout", "Query timeout.").Default("30s").Duration()
@@ -66,7 +66,7 @@ func main() {
 			SeriesCount:      *seriesCount,
 		}, logger))
 
-		if *queryEnabled {
+		if *queryEnabled == "true" {
 			queryClients = append(queryClients, client.NewQueryClient(client.QueryClientConfig{
 				URL:                   *queryURL,
 				UserID:                userID,
