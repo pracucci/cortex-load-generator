@@ -93,9 +93,11 @@ func NewQueryClient(cfg QueryClientConfig, logger log.Logger, reg prometheus.Reg
 		c.resultsComparedTotal.WithLabelValues(result).Add(0)
 	}
 
-	go c.run()
-
 	return c
+}
+
+func (c *QueryClient) Start() {
+	go c.run()
 }
 
 func (c *QueryClient) run() {
@@ -113,7 +115,7 @@ func (c *QueryClient) run() {
 
 func (c *QueryClient) runQueryAndVerifyResult() {
 	// Compute the query start/end time.
-	start, end, ok := c.getQueryTimeRange()
+	start, end, ok := c.getQueryTimeRange(time.Now().UTC())
 	if !ok {
 		level.Debug(c.logger).Log("msg", "query skipped because of no eligible time range to query")
 		c.queriesTotal.WithLabelValues(querySkipped).Inc()
@@ -173,16 +175,13 @@ func (c *QueryClient) runQuery(start, end time.Time) ([]model.SamplePair, error)
 	return result, nil
 }
 
-// TODO test me
-func (c *QueryClient) getQueryTimeRange() (start, end time.Time, ok bool) {
-	now := time.Now().UTC()
-
+func (c *QueryClient) getQueryTimeRange(now time.Time) (start, end time.Time, ok bool) {
 	// Do not query the last 2 scape interval to give enough time to all write
 	// requests to successfully complete.
 	end = alignTimestampToInterval(now.Add(-2*c.cfg.ExpectedWriteInterval), c.cfg.ExpectedWriteInterval)
 
 	// Do not query before the start time because the config may have been different (eg. number of series).
-	// Also give a 2 scrape intervals grace period to let the initial writes to succeed and honor the configured max age.
+	// Also give a 2 write intervals grace period to let the initial writes to succeed and honor the configured max age.
 	start = now.Add(-c.cfg.QueryMaxAge)
 	if startTimeWithGrace := c.startTime.Add(2 * c.cfg.ExpectedWriteInterval); startTimeWithGrace.After(start) {
 		start = startTimeWithGrace
@@ -195,7 +194,6 @@ func (c *QueryClient) getQueryTimeRange() (start, end time.Time, ok bool) {
 	return
 }
 
-// TODO test me
 func verifySineWaveSamples(samples []model.SamplePair, expectedSeries int, expectedWriteInterval time.Duration) error {
 	for idx, sample := range samples {
 		ts := time.UnixMilli(int64(sample.Timestamp)).UTC()

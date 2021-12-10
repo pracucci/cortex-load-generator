@@ -67,7 +67,7 @@ func main() {
 		}, logger))
 
 		if *queryEnabled == "true" {
-			queryClients = append(queryClients, client.NewQueryClient(client.QueryClientConfig{
+			queryClient := client.NewQueryClient(client.QueryClientConfig{
 				URL:                   *queryURL,
 				UserID:                userID,
 				QueryInterval:         *queryInterval,
@@ -75,7 +75,10 @@ func main() {
 				QueryMaxAge:           *queryMaxAge,
 				ExpectedSeries:        *seriesCount,
 				ExpectedWriteInterval: *remoteWriteInterval,
-			}, logger, reg))
+			}, logger, reg)
+
+			queryClient.Start()
+			queryClients = append(queryClients, queryClient)
 		}
 	}
 
