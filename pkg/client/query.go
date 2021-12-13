@@ -122,7 +122,9 @@ func (c *QueryClient) runQueryAndVerifyResult() {
 		return
 	}
 
-	samples, err := c.runQuery(start, end)
+	step := c.getQueryStep(start, end, c.cfg.ExpectedWriteInterval)
+
+	samples, err := c.runQuery(start, end, step)
 	if err != nil {
 		level.Error(c.logger).Log("msg", "failed to execute query", "err", err)
 		c.queriesTotal.WithLabelValues(queryFailed).Inc()
@@ -131,7 +133,7 @@ func (c *QueryClient) runQueryAndVerifyResult() {
 
 	c.queriesTotal.WithLabelValues(querySuccess).Inc()
 
-	err = verifySineWaveSamples(samples, c.cfg.ExpectedSeries, c.cfg.ExpectedWriteInterval)
+	err = verifySineWaveSamples(samples, c.cfg.ExpectedSeries, step)
 	if err != nil {
 		level.Warn(c.logger).Log("msg", "query result comparison failed", "err", err)
 		c.resultsComparedTotal.WithLabelValues(comparisonFailed).Inc()
@@ -141,14 +143,14 @@ func (c *QueryClient) runQueryAndVerifyResult() {
 	c.resultsComparedTotal.WithLabelValues(comparisonSuccess).Inc()
 }
 
-func (c *QueryClient) runQuery(start, end time.Time) ([]model.SamplePair, error) {
+func (c *QueryClient) runQuery(start, end time.Time, step time.Duration) ([]model.SamplePair, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), c.cfg.QueryTimeout)
 	defer cancel()
 
 	value, _, err := c.client.QueryRange(ctx, "sum(cortex_load_generator_sine_wave)", v1.Range{
 		Start: start,
 		End:   end,
-		Step:  c.cfg.ExpectedWriteInterval,
+		Step:  step,
 	})
 	if err != nil {
 		return nil, err
@@ -194,7 +196,24 @@ func (c *QueryClient) getQueryTimeRange(now time.Time) (start, end time.Time, ok
 	return
 }
 
-func verifySineWaveSamples(samples []model.SamplePair, expectedSeries int, expectedWriteInterval time.Duration) error {
+func (c *QueryClient) getQueryStep(start, end time.Time, writeInterval time.Duration) time.Duration {
+	const maxSamples = 1000
+
+	// Compute the number of samples that we would have if we every single sample.
+	actualSamples := end.Sub(start) / writeInterval
+	if actualSamples <= maxSamples {
+		return writeInterval
+	}
+
+	// Adjust the query step based on the max steps spread over the query time range,
+	// rounding it to write interval.
+	step := end.Sub(start) / time.Duration(maxSamples)
+	step = ((step / writeInterval) + 1) * writeInterval
+
+	return step
+}
+
+func verifySineWaveSamples(samples []model.SamplePair, expectedSeries int, expectedStep time.Duration) error {
 	for idx, sample := range samples {
 		ts := time.UnixMilli(int64(sample.Timestamp)).UTC()
 
@@ -207,7 +226,7 @@ func verifySineWaveSamples(samples []model.SamplePair, expectedSeries int, expec
 		// Assert on sample timestamp. We expect no gaps.
 		if idx > 0 {
 			prevTs := time.UnixMilli(int64(samples[idx-1].Timestamp)).UTC()
-			expectedTs := prevTs.Add(expectedWriteInterval)
+			expectedTs := prevTs.Add(expectedStep)
 
 			if ts.UnixMilli() != expectedTs.UnixMilli() {
 				return fmt.Errorf("sample at timestamp %d (%s) was expected to have timestamp %d (%s) because previous sample had timestamp %d (%s)",

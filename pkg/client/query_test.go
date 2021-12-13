@@ -53,15 +53,46 @@ func TestQueryClient_GetQueryTimeRange(t *testing.T) {
 	}
 }
 
+func TestQueryClient_GetQueryStep(t *testing.T) {
+	tests := map[string]struct {
+		start         time.Time
+		end           time.Time
+		writeInterval time.Duration
+		expectedStep  time.Duration
+	}{
+		"should return write interval if expected number of samples is < 1000": {
+			start:         time.UnixMilli(0),
+			end:           time.UnixMilli(3600 * 1000),
+			writeInterval: 10 * time.Second,
+			expectedStep:  10 * time.Second,
+		},
+		"should align step to write interval and guarantee no more than 1000 samples": {
+			start:         time.UnixMilli(0),
+			end:           time.UnixMilli(86400 * 1000),
+			writeInterval: 10 * time.Second,
+			expectedStep:  90 * time.Second,
+		},
+	}
+
+	for testName, testData := range tests {
+		t.Run(testName, func(t *testing.T) {
+			client := NewQueryClient(QueryClientConfig{}, log.NewNopLogger(), prometheus.NewPedanticRegistry())
+
+			actualStep := client.getQueryStep(testData.start, testData.end, testData.writeInterval)
+			assert.Equal(t, testData.expectedStep, actualStep)
+		})
+	}
+}
+
 func TestVerifySineWaveSamples(t *testing.T) {
 	// Round to millis since that's the precision of Prometheus timestamps.
 	now := time.UnixMilli(time.Now().UnixMilli()).UTC()
 
 	tests := map[string]struct {
-		samples               []model.SamplePair
-		expectedSeries        int
-		expectedWriteInterval time.Duration
-		expectedErr           string
+		samples        []model.SamplePair
+		expectedSeries int
+		expectedStep   time.Duration
+		expectedErr    string
 	}{
 		"should return no error if all samples value and timestamp match the expected one (1 series)": {
 			samples: []model.SamplePair{
@@ -69,9 +100,9 @@ func TestVerifySineWaveSamples(t *testing.T) {
 				newSamplePair(now.Add(20*time.Second), generateSineWaveValue(now.Add(20*time.Second))),
 				newSamplePair(now.Add(30*time.Second), generateSineWaveValue(now.Add(30*time.Second))),
 			},
-			expectedSeries:        1,
-			expectedWriteInterval: 10 * time.Second,
-			expectedErr:           "",
+			expectedSeries: 1,
+			expectedStep:   10 * time.Second,
+			expectedErr:    "",
 		},
 		"should return no error if all samples value and timestamp match the expected one (multiple series)": {
 			samples: []model.SamplePair{
@@ -79,9 +110,9 @@ func TestVerifySineWaveSamples(t *testing.T) {
 				newSamplePair(now.Add(20*time.Second), 5*generateSineWaveValue(now.Add(20*time.Second))),
 				newSamplePair(now.Add(30*time.Second), 5*generateSineWaveValue(now.Add(30*time.Second))),
 			},
-			expectedSeries:        5,
-			expectedWriteInterval: 10 * time.Second,
-			expectedErr:           "",
+			expectedSeries: 5,
+			expectedStep:   10 * time.Second,
+			expectedErr:    "",
 		},
 		"should return error if there's a missing series": {
 			samples: []model.SamplePair{
@@ -89,24 +120,24 @@ func TestVerifySineWaveSamples(t *testing.T) {
 				newSamplePair(now.Add(20*time.Second), 4*generateSineWaveValue(now.Add(20*time.Second))),
 				newSamplePair(now.Add(30*time.Second), 4*generateSineWaveValue(now.Add(30*time.Second))),
 			},
-			expectedSeries:        5,
-			expectedWriteInterval: 10 * time.Second,
-			expectedErr:           "sample at timestamp .* has value .* while was expecting .*",
+			expectedSeries: 5,
+			expectedStep:   10 * time.Second,
+			expectedErr:    "sample at timestamp .* has value .* while was expecting .*",
 		},
 		"should return error if there's a missing sample": {
 			samples: []model.SamplePair{
 				newSamplePair(now.Add(10*time.Second), 5*generateSineWaveValue(now.Add(10*time.Second))),
 				newSamplePair(now.Add(30*time.Second), 5*generateSineWaveValue(now.Add(30*time.Second))),
 			},
-			expectedSeries:        5,
-			expectedWriteInterval: 10 * time.Second,
-			expectedErr:           "sample at timestamp .* was expected to have timestamp .*",
+			expectedSeries: 5,
+			expectedStep:   10 * time.Second,
+			expectedErr:    "sample at timestamp .* was expected to have timestamp .*",
 		},
 	}
 
 	for testName, testData := range tests {
 		t.Run(testName, func(t *testing.T) {
-			actual := verifySineWaveSamples(testData.samples, testData.expectedSeries, testData.expectedWriteInterval)
+			actual := verifySineWaveSamples(testData.samples, testData.expectedSeries, testData.expectedStep)
 			if testData.expectedErr == "" {
 				assert.NoError(t, actual)
 			} else {
