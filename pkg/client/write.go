@@ -6,7 +6,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"log"
 	"math"
 	"net/http"
 	"net/url"
@@ -14,6 +13,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/gogo/protobuf/proto"
 	"github.com/golang/snappy"
 	"github.com/prometheus/prometheus/pkg/gate"
@@ -24,7 +25,7 @@ const (
 	maxErrMsgLen = 256
 )
 
-type ClientConfig struct {
+type WriteClientConfig struct {
 	// Cortex URL.
 	URL url.URL
 
@@ -40,20 +41,22 @@ type ClientConfig struct {
 	WriteBatchSize   int
 }
 
-type Client struct {
+type WriteClient struct {
 	client    *http.Client
-	cfg       ClientConfig
+	cfg       WriteClientConfig
 	writeGate *gate.Gate
+	logger    log.Logger
 }
 
-func NewClient(cfg ClientConfig) *Client {
+func NewWriteClient(cfg WriteClientConfig, logger log.Logger) *WriteClient {
 	var rt http.RoundTripper = &http.Transport{}
 	rt = &clientRoundTripper{userID: cfg.UserID, rt: rt}
 
-	c := &Client{
+	c := &WriteClient{
 		client:    &http.Client{Transport: rt},
 		cfg:       cfg,
 		writeGate: gate.New(cfg.WriteConcurrency),
+		logger:    logger,
 	}
 
 	go c.run()
@@ -61,7 +64,7 @@ func NewClient(cfg ClientConfig) *Client {
 	return c
 }
 
-func (c *Client) run() {
+func (c *WriteClient) run() {
 	c.writeSeries()
 
 	ticker := time.NewTicker(c.cfg.WriteInterval)
@@ -74,8 +77,9 @@ func (c *Client) run() {
 	}
 }
 
-func (c *Client) writeSeries() {
-	series := generateSineWaveSeries(time.Now(), c.cfg.SeriesCount)
+func (c *WriteClient) writeSeries() {
+	ts := alignTimestampToInterval(time.Now(), c.cfg.WriteInterval)
+	series := generateSineWaveSeries(ts, c.cfg.SeriesCount)
 
 	// Honor the batch size.
 	wg := sync.WaitGroup{}
@@ -102,7 +106,7 @@ func (c *Client) writeSeries() {
 
 			err := c.send(ctx, req)
 			if err != nil {
-				log.Println("Error while writing series: " + err.Error())
+				level.Error(c.logger).Log("msg", "failed to write series", "err", err)
 			}
 		}(o)
 	}
@@ -110,7 +114,7 @@ func (c *Client) writeSeries() {
 	wg.Wait()
 }
 
-func (c *Client) send(ctx context.Context, req *prompb.WriteRequest) error {
+func (c *WriteClient) send(ctx context.Context, req *prompb.WriteRequest) error {
 	data, err := proto.Marshal(req)
 	if err != nil {
 		return err
@@ -152,6 +156,10 @@ func (c *Client) send(ctx context.Context, req *prompb.WriteRequest) error {
 	return err
 }
 
+func alignTimestampToInterval(ts time.Time, interval time.Duration) time.Time {
+	return time.Unix(0, (ts.UnixNano()/int64(interval))*int64(interval))
+}
+
 func generateSineWaveSeries(t time.Time, seriesCount int) []*prompb.TimeSeries {
 	out := make([]*prompb.TimeSeries, 0, seriesCount)
 	value := generateSineWaveValue(t)
@@ -167,7 +175,7 @@ func generateSineWaveSeries(t time.Time, seriesCount int) []*prompb.TimeSeries {
 			}},
 			Samples: []prompb.Sample{{
 				Value:     value,
-				Timestamp: int64(t.UnixNano() / int64(time.Millisecond)),
+				Timestamp: t.UnixMilli(),
 			}},
 		})
 	}
