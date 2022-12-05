@@ -27,6 +27,7 @@ var (
 	queryMaxAge            = kingpin.Flag("query-max-age", "How back in the past metrics can be queried at most.").Default("24h").Duration()
 	tenantsCount           = kingpin.Flag("tenants-count", "Number of tenants to fake.").Default("1").Int()
 	seriesCount            = kingpin.Flag("series-count", "Number of series to generate for each tenant.").Default("1000").Int()
+	extraLabelCount        = kingpin.Flag("extra-labels-count", "Number of extra labels to generate for series.").Default("0").Int()
 	serverMetricsPort      = kingpin.Flag("server-metrics-port", "The port where metrics are exposed.").Default("9900").Int()
 )
 
@@ -64,6 +65,7 @@ func main() {
 			WriteBatchSize:   *remoteBatchSize,
 			UserID:           userID,
 			SeriesCount:      *seriesCount,
+			ExtraLabels:      *extraLabelCount,
 		}, logger))
 
 		if *queryEnabled == "true" {
