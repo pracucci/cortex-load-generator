@@ -82,7 +82,8 @@ func (c *WriteClient) run() {
 
 func (c *WriteClient) writeSeries() {
 	ts := alignTimestampToInterval(time.Now(), c.cfg.WriteInterval)
-	series := generateSineWaveSeries(ts, c.cfg.SeriesCount, c.cfg.ExtraLabels)
+	value := generateSineWaveValue(ts)
+	series := generateSeries("cortex_load_generator_sine_wave", ts, value, c.cfg.SeriesCount, c.cfg.ExtraLabels)
 
 	// Honor the batch size.
 	wg := sync.WaitGroup{}
@@ -163,14 +164,13 @@ func alignTimestampToInterval(ts time.Time, interval time.Duration) time.Time {
 	return time.Unix(0, (ts.UnixNano()/int64(interval))*int64(interval))
 }
 
-func generateSineWaveSeries(t time.Time, seriesCount, extraLabels int) []*prompb.TimeSeries {
+func generateSeries(name string, t time.Time, value float64, seriesCount, extraLabels int) []*prompb.TimeSeries {
 	out := make([]*prompb.TimeSeries, 0, seriesCount)
-	value := generateSineWaveValue(t)
 
 	for i := 1; i <= seriesCount; i++ {
 		labels := []*prompb.Label{{
 			Name:  "__name__",
-			Value: "cortex_load_generator_sine_wave",
+			Value: name,
 		}, {
 			Name:  "wave",
 			Value: strconv.Itoa(i),
