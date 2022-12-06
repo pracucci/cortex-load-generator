@@ -33,7 +33,8 @@ type WriteClientConfig struct {
 	UserID string
 
 	// Number of series to generate per write request.
-	SeriesCount int
+	SeriesCount   int
+	SawtoothCount int
 
 	// Number of extra labels to generate per write request.
 	ExtraLabels int
@@ -84,6 +85,10 @@ func (c *WriteClient) writeSeries() {
 	ts := alignTimestampToInterval(time.Now(), c.cfg.WriteInterval)
 	value := generateSineWaveValue(ts)
 	series := generateSeries("cortex_load_generator_sine_wave", ts, value, c.cfg.SeriesCount, c.cfg.ExtraLabels)
+	if c.cfg.SawtoothCount > 0 {
+		value := generateSawtoothValue(ts)
+		series = append(series, generateSeries("cortex_load_generator_sawtooth", ts, value, c.cfg.SawtoothCount, c.cfg.ExtraLabels)...)
+	}
 
 	// Honor the batch size.
 	wg := sync.WaitGroup{}
@@ -198,4 +203,10 @@ func generateSineWaveValue(t time.Time) float64 {
 	period := float64(40 * (15 * time.Second))
 	radians := float64(t.UnixNano()) / period * 2 * math.Pi
 	return math.Sin(radians)
+}
+
+func generateSawtoothValue(t time.Time) float64 {
+	// With a 15-second scrape interval this gives a ten-minute period
+	period := float64(40 * (15 * time.Second))
+	return math.Mod(float64(t.UnixNano()), period) / period
 }
