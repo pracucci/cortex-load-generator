@@ -35,6 +35,9 @@ type WriteClientConfig struct {
 	// Number of series to generate per write request.
 	SeriesCount int
 
+	// Number of extra labels to generate per write request.
+	ExtraLabels int
+
 	WriteInterval    time.Duration
 	WriteTimeout     time.Duration
 	WriteConcurrency int
@@ -79,7 +82,7 @@ func (c *WriteClient) run() {
 
 func (c *WriteClient) writeSeries() {
 	ts := alignTimestampToInterval(time.Now(), c.cfg.WriteInterval)
-	series := generateSineWaveSeries(ts, c.cfg.SeriesCount)
+	series := generateSineWaveSeries(ts, c.cfg.SeriesCount, c.cfg.ExtraLabels)
 
 	// Honor the batch size.
 	wg := sync.WaitGroup{}
@@ -160,19 +163,26 @@ func alignTimestampToInterval(ts time.Time, interval time.Duration) time.Time {
 	return time.Unix(0, (ts.UnixNano()/int64(interval))*int64(interval))
 }
 
-func generateSineWaveSeries(t time.Time, seriesCount int) []*prompb.TimeSeries {
+func generateSineWaveSeries(t time.Time, seriesCount, extraLabels int) []*prompb.TimeSeries {
 	out := make([]*prompb.TimeSeries, 0, seriesCount)
 	value := generateSineWaveValue(t)
 
 	for i := 1; i <= seriesCount; i++ {
+		labels := []*prompb.Label{{
+			Name:  "__name__",
+			Value: "cortex_load_generator_sine_wave",
+		}, {
+			Name:  "wave",
+			Value: strconv.Itoa(i),
+		}}
+		for j := 0; j < extraLabels; j++ {
+			labels = append(labels, &prompb.Label{
+				Name:  fmt.Sprintf("extraLabel%d", j),
+				Value: "default",
+			})
+		}
 		out = append(out, &prompb.TimeSeries{
-			Labels: []*prompb.Label{{
-				Name:  "__name__",
-				Value: "cortex_load_generator_sine_wave",
-			}, {
-				Name:  "wave",
-				Value: strconv.Itoa(i),
-			}},
+			Labels: labels,
 			Samples: []prompb.Sample{{
 				Value:     value,
 				Timestamp: t.UnixMilli(),
