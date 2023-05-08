@@ -26,6 +26,8 @@ const (
 	querySkipped = "skipped"
 	querySuccess = "success"
 	queryFailed  = "fail"
+
+	defaultQuery = "sum(cortex_load_generator_sine_wave)"
 )
 
 type QueryClientConfig struct {
@@ -40,6 +42,8 @@ type QueryClientConfig struct {
 
 	ExpectedSeries        int
 	ExpectedWriteInterval time.Duration
+
+	AdditionalQueries []string
 }
 
 type QueryClient struct {
@@ -77,20 +81,24 @@ func NewQueryClient(cfg QueryClientConfig, logger log.Logger, reg prometheus.Reg
 			Name:        "cortex_load_generator_queries_total",
 			Help:        "Total number of attempted queries.",
 			ConstLabels: map[string]string{"user": cfg.UserID},
-		}, []string{"result"}),
+		}, []string{"result", "query"}),
 		resultsComparedTotal: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 			Name:        "cortex_load_generator_query_results_compared_total",
 			Help:        "Total number of query results compared.",
 			ConstLabels: map[string]string{"user": cfg.UserID},
-		}, []string{"result"}),
+		}, []string{"result", "query"}),
 	}
 
 	// Init metrics.
 	for _, result := range []string{querySuccess, queryFailed, querySkipped} {
-		c.queriesTotal.WithLabelValues(result).Add(0)
+		c.queriesTotal.WithLabelValues(result, defaultQuery).Add(0)
+
+		for _, query := range cfg.AdditionalQueries {
+			c.queriesTotal.WithLabelValues(result, query).Add(0)
+		}
 	}
 	for _, result := range []string{comparisonSuccess, comparisonFailed} {
-		c.resultsComparedTotal.WithLabelValues(result).Add(0)
+		c.resultsComparedTotal.WithLabelValues(result, defaultQuery).Add(0)
 	}
 
 	return c
@@ -101,53 +109,73 @@ func (c *QueryClient) Start() {
 }
 
 func (c *QueryClient) run() {
-	c.runQueryAndVerifyResult()
+	c.runQueries()
 
 	ticker := time.NewTicker(c.cfg.QueryInterval)
 
 	for {
 		select {
 		case <-ticker.C:
-			c.runQueryAndVerifyResult()
+			c.runQueries()
 		}
 	}
 }
 
-func (c *QueryClient) runQueryAndVerifyResult() {
+func (c *QueryClient) runQueries() {
 	// Compute the query start/end time.
 	start, end, ok := c.getQueryTimeRange(time.Now().UTC())
 	if !ok {
-		level.Debug(c.logger).Log("msg", "query skipped because of no eligible time range to query")
-		c.queriesTotal.WithLabelValues(querySkipped).Inc()
+		level.Debug(c.logger).Log("msg", "skipped querying because no eligible time range to query")
+		c.queriesTotal.WithLabelValues(querySkipped, "").Inc()
 		return
 	}
 
 	step := c.getQueryStep(start, end, c.cfg.ExpectedWriteInterval)
 
-	samples, err := c.runQuery(start, end, step)
+	c.runDefaultQueryAndVerifyResult(start, end, step)
+
+	for _, query := range c.cfg.AdditionalQueries {
+		c.runAdditionalQuery(start, end, step, query)
+	}
+}
+
+func (c *QueryClient) runDefaultQueryAndVerifyResult(start, end time.Time, step time.Duration) {
+	samples, err := c.runQueryAndCollectStats(start, end, step, defaultQuery)
 	if err != nil {
-		level.Error(c.logger).Log("msg", "failed to execute query", "err", err)
-		c.queriesTotal.WithLabelValues(queryFailed).Inc()
 		return
 	}
-
-	c.queriesTotal.WithLabelValues(querySuccess).Inc()
 
 	err = verifySineWaveSamples(samples, c.cfg.ExpectedSeries, step)
 	if err != nil {
-		level.Warn(c.logger).Log("msg", "query result comparison failed", "err", err)
-		c.resultsComparedTotal.WithLabelValues(comparisonFailed).Inc()
+		level.Warn(c.logger).Log("msg", "query result comparison failed", "err", err, "query", defaultQuery)
+		c.resultsComparedTotal.WithLabelValues(comparisonFailed, defaultQuery).Inc()
 		return
 	}
 
-	c.resultsComparedTotal.WithLabelValues(comparisonSuccess).Inc()
+	c.resultsComparedTotal.WithLabelValues(comparisonSuccess, defaultQuery).Inc()
 }
 
-func (c *QueryClient) runQuery(start, end time.Time, step time.Duration) ([]model.SamplePair, error) {
+func (c *QueryClient) runAdditionalQuery(start, end time.Time, step time.Duration, query string) {
+	c.runQueryAndCollectStats(start, end, step, query)
+}
+
+func (c *QueryClient) runQueryAndCollectStats(start, end time.Time, step time.Duration, query string) ([]model.SamplePair, error) {
+	samples, err := c.runQuery(start, end, step, query)
+	if err != nil {
+		level.Error(c.logger).Log("msg", "failed to execute query", "err", err, "query", query)
+		c.queriesTotal.WithLabelValues(queryFailed, query).Inc()
+	}
+
+	c.queriesTotal.WithLabelValues(querySuccess, query).Inc()
+
+	return samples, err
+}
+
+func (c *QueryClient) runQuery(start, end time.Time, step time.Duration, query string) ([]model.SamplePair, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), c.cfg.QueryTimeout)
 	defer cancel()
 
-	value, _, err := c.client.QueryRange(ctx, "sum(cortex_load_generator_sine_wave)", v1.Range{
+	value, _, err := c.client.QueryRange(ctx, query, v1.Range{
 		Start: start,
 		End:   end,
 		Step:  step,
