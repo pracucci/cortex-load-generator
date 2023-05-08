@@ -91,7 +91,9 @@ func NewQueryClient(cfg QueryClientConfig, logger log.Logger, reg prometheus.Reg
 	}
 
 	// Init metrics.
-	for _, result := range []string{querySuccess, queryFailed, querySkipped} {
+	c.queriesTotal.WithLabelValues(querySkipped, "").Add(0)
+
+	for _, result := range []string{querySuccess, queryFailed} {
 		c.queriesTotal.WithLabelValues(result, defaultQuery).Add(0)
 
 		for _, query := range cfg.AdditionalQueries {
