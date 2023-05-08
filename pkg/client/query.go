@@ -139,7 +139,7 @@ func (c *QueryClient) runQueries() {
 	go func() {
 		defer wg.Done()
 
-		c.runDefaultQueryAndVerifyResult(start, end, step)
+		c.runDefaultQuery(start, end, step)
 	}()
 
 	for _, query := range c.cfg.AdditionalQueries {
@@ -153,7 +153,7 @@ func (c *QueryClient) runQueries() {
 	wg.Wait()
 }
 
-func (c *QueryClient) runDefaultQueryAndVerifyResult(start, end time.Time, step time.Duration) {
+func (c *QueryClient) runDefaultQuery(start, end time.Time, step time.Duration) {
 	samples, err := c.runQueryAndCollectStats(start, end, step, defaultQuery)
 	if err != nil {
 		return
