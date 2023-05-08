@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/go-kit/log"
@@ -132,11 +133,24 @@ func (c *QueryClient) runQueries() {
 
 	step := c.getQueryStep(start, end, c.cfg.ExpectedWriteInterval)
 
-	c.runDefaultQueryAndVerifyResult(start, end, step)
+	wg := sync.WaitGroup{}
+	wg.Add(1 + len(c.cfg.AdditionalQueries))
+
+	go func() {
+		defer wg.Done()
+
+		c.runDefaultQueryAndVerifyResult(start, end, step)
+	}()
 
 	for _, query := range c.cfg.AdditionalQueries {
-		c.runAdditionalQuery(start, end, step, query)
+		go func() {
+			defer wg.Done()
+
+			c.runAdditionalQuery(start, end, step, query)
+		}()
 	}
+
+	wg.Wait()
 }
 
 func (c *QueryClient) runDefaultQueryAndVerifyResult(start, end time.Time, step time.Duration) {
