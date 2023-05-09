@@ -25,6 +25,7 @@ var (
 	queryInterval          = kingpin.Flag("query-interval", "Frequency to query each tenant.").Default("10s").Duration()
 	queryTimeout           = kingpin.Flag("query-timeout", "Query timeout.").Default("30s").Duration()
 	queryMaxAge            = kingpin.Flag("query-max-age", "How back in the past metrics can be queried at most.").Default("24h").Duration()
+	additionalQueries      = kingpin.Flag("query-additional-queries", "PromQL queries to run in addition to the default.").Strings()
 	tenantsCount           = kingpin.Flag("tenants-count", "Number of tenants to fake.").Default("1").Int()
 	seriesCount            = kingpin.Flag("series-count", "Number of series to generate for each tenant.").Default("1000").Int()
 	extraLabelCount        = kingpin.Flag("extra-labels-count", "Number of extra labels to generate for series.").Default("0").Int()
@@ -77,6 +78,7 @@ func main() {
 				QueryMaxAge:           *queryMaxAge,
 				ExpectedSeries:        *seriesCount,
 				ExpectedWriteInterval: *remoteWriteInterval,
+				AdditionalQueries:     *additionalQueries,
 			}, logger, reg)
 
 			queryClient.Start()
