@@ -13,3 +13,6 @@ run-proxy:
 
 test:
 	go test ./...
+
+lint:
+	docker run -t --rm -v $(shell pwd):/code -v cortex-load-generator-lint-cache:/root/.cache -w /code golangci/golangci-lint:v1.53.3 golangci-lint run ./...
