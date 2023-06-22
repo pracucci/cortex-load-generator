@@ -116,11 +116,8 @@ func (c *QueryClient) run() {
 
 	ticker := time.NewTicker(c.cfg.QueryInterval)
 
-	for {
-		select {
-		case <-ticker.C:
-			c.runQueries()
-		}
+	for range ticker.C {
+		c.runQueries()
 	}
 }
 
@@ -128,7 +125,7 @@ func (c *QueryClient) runQueries() {
 	// Compute the query start/end time.
 	start, end, ok := c.getQueryTimeRange(time.Now().UTC())
 	if !ok {
-		level.Debug(c.logger).Log("msg", "skipped querying because no eligible time range to query")
+		level.Debug(c.logger).Log("msg", "skipped querying because no eligible time range to query") //nolint:errcheck
 		c.queriesTotal.WithLabelValues(querySkipped, "").Inc()
 		return
 	}
@@ -165,7 +162,7 @@ func (c *QueryClient) runDefaultQuery(start, end time.Time, step time.Duration) 
 
 	err = verifySineWaveSamples(samples, c.cfg.ExpectedSeries, step)
 	if err != nil {
-		level.Warn(c.logger).Log("msg", "query result comparison failed", "err", err, "query", defaultQuery)
+		level.Warn(c.logger).Log("msg", "query result comparison failed", "err", err, "query", defaultQuery) //nolint:errcheck
 		c.resultsComparedTotal.WithLabelValues(comparisonFailed, defaultQuery).Inc()
 		return
 	}
@@ -174,13 +171,13 @@ func (c *QueryClient) runDefaultQuery(start, end time.Time, step time.Duration) 
 }
 
 func (c *QueryClient) runAdditionalQuery(start, end time.Time, step time.Duration, query string) {
-	c.runQueryAndCollectStats(start, end, step, query)
+	_, _ = c.runQueryAndCollectStats(start, end, step, query)
 }
 
 func (c *QueryClient) runQueryAndCollectStats(start, end time.Time, step time.Duration, query string) ([]model.SamplePair, error) {
 	samples, err := c.runQuery(start, end, step, query)
 	if err != nil {
-		level.Error(c.logger).Log("msg", "failed to execute query", "err", err, "query", query)
+		level.Error(c.logger).Log("msg", "failed to execute query", "err", err, "query", query) //nolint:errcheck
 		c.queriesTotal.WithLabelValues(queryFailed, query).Inc()
 	}
 

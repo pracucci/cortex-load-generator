@@ -7,11 +7,12 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	"github.com/pracucci/cortex-load-generator/pkg/client"
-	"github.com/pracucci/cortex-load-generator/pkg/util"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
 	kingpin "gopkg.in/alecthomas/kingpin.v2"
+
+	"github.com/pracucci/cortex-load-generator/pkg/client"
+	"github.com/pracucci/cortex-load-generator/pkg/util"
 )
 
 var (
@@ -45,20 +46,18 @@ func main() {
 
 	i := util.NewInstrumentationServer(*serverMetricsPort, logger, reg)
 	if err := i.Start(); err != nil {
-		level.Error(logger).Log("msg", "Unable to start instrumentation server", "err", err.Error())
+		level.Error(logger).Log("msg", "Unable to start instrumentation server", "err", err.Error()) //nolint:errcheck
 		os.Exit(1)
 	}
 
 	// Start a client for each tenant.
-	writeClients := make([]*client.WriteClient, 0, *tenantsCount)
-	queryClients := make([]*client.QueryClient, 0, *tenantsCount)
 	wg := sync.WaitGroup{}
 	wg.Add(*tenantsCount)
 
 	for t := 1; t <= *tenantsCount; t++ {
 		userID := fmt.Sprintf("load-generator-%d", t)
 
-		writeClients = append(writeClients, client.NewWriteClient(client.WriteClientConfig{
+		writeClient := client.NewWriteClient(client.WriteClientConfig{
 			URL:              **remoteURL,
 			WriteInterval:    *remoteWriteInterval,
 			WriteTimeout:     *remoteWriteTimeout,
@@ -67,7 +66,9 @@ func main() {
 			UserID:           userID,
 			SeriesCount:      *seriesCount,
 			ExtraLabels:      *extraLabelCount,
-		}, logger))
+		}, logger)
+
+		writeClient.Start()
 
 		if *queryEnabled == "true" {
 			queryClient := client.NewQueryClient(client.QueryClientConfig{
@@ -82,7 +83,6 @@ func main() {
 			}, logger, reg)
 
 			queryClient.Start()
-			queryClients = append(queryClients, queryClient)
 		}
 	}
 
