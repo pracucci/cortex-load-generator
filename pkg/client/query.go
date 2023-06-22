@@ -145,6 +145,8 @@ func (c *QueryClient) runQueries() {
 	}()
 
 	for _, query := range c.cfg.AdditionalQueries {
+		query := query
+
 		go func() {
 			defer wg.Done()
 
