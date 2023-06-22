@@ -62,9 +62,11 @@ func NewWriteClient(cfg WriteClientConfig, logger log.Logger) *WriteClient {
 		logger:    logger,
 	}
 
-	go c.run()
-
 	return c
+}
+
+func (c *WriteClient) Start() {
+	go c.run()
 }
 
 func (c *WriteClient) run() {
@@ -72,11 +74,8 @@ func (c *WriteClient) run() {
 
 	ticker := time.NewTicker(c.cfg.WriteInterval)
 
-	for {
-		select {
-		case <-ticker.C:
-			c.writeSeries()
-		}
+	for range ticker.C {
+		c.writeSeries()
 	}
 }
 
@@ -93,9 +92,9 @@ func (c *WriteClient) writeSeries() {
 		go func(o int) {
 			defer wg.Done()
 
-			// Honow the max concurrency
+			// Honor the max concurrency
 			ctx := context.Background()
-			c.writeGate.Start(ctx)
+			_ = c.writeGate.Start(ctx)
 			defer c.writeGate.Done()
 
 			end := o + c.cfg.WriteBatchSize
@@ -109,7 +108,7 @@ func (c *WriteClient) writeSeries() {
 
 			err := c.send(ctx, req)
 			if err != nil {
-				level.Error(c.logger).Log("msg", "failed to write series", "err", err)
+				level.Error(c.logger).Log("msg", "failed to write series", "err", err) //nolint:errcheck
 			}
 		}(o)
 	}
@@ -143,7 +142,7 @@ func (c *WriteClient) send(ctx context.Context, req *prompb.WriteRequest) error 
 	if err != nil {
 		return err
 	}
-	defer httpResp.Body.Close()
+	defer httpResp.Body.Close() //nolint:errcheck
 
 	if httpResp.StatusCode/100 != 2 {
 		scanner := bufio.NewScanner(io.LimitReader(httpResp.Body, maxErrMsgLen))
