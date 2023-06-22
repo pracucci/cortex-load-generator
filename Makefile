@@ -10,3 +10,6 @@ publish-image: build-image
 
 run-proxy:
 	go run ./tools/proxy/
+
+test:
+	go test ./...
