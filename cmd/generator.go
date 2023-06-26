@@ -46,7 +46,7 @@ func main() {
 
 	i := util.NewInstrumentationServer(*serverMetricsPort, logger, reg)
 	if err := i.Start(); err != nil {
-		level.Error(logger).Log("msg", "Unable to start instrumentation server", "err", err.Error()) //nolint:errcheck
+		level.Error(logger).Log("msg", "Unable to start instrumentation server", "err", err.Error())
 		os.Exit(1)
 	}
 

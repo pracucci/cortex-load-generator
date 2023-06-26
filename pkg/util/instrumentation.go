@@ -45,7 +45,7 @@ func (s *InstrumentationServer) Start() error {
 
 	go func() {
 		if err := s.srv.Serve(listener); err != nil {
-			level.Error(s.logger).Log("msg", "metrics server terminated", "err", err) //nolint:errcheck
+			level.Error(s.logger).Log("msg", "metrics server terminated", "err", err)
 		}
 	}()
 

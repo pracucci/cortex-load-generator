@@ -125,7 +125,7 @@ func (c *QueryClient) runQueries() {
 	// Compute the query start/end time.
 	start, end, ok := c.getQueryTimeRange(time.Now().UTC())
 	if !ok {
-		level.Debug(c.logger).Log("msg", "skipped querying because no eligible time range to query") //nolint:errcheck
+		level.Debug(c.logger).Log("msg", "skipped querying because no eligible time range to query")
 		c.queriesTotal.WithLabelValues(querySkipped, "").Inc()
 		return
 	}
@@ -162,7 +162,7 @@ func (c *QueryClient) runDefaultQuery(start, end time.Time, step time.Duration) 
 
 	err = verifySineWaveSamples(samples, c.cfg.ExpectedSeries, step)
 	if err != nil {
-		level.Warn(c.logger).Log("msg", "query result comparison failed", "err", err, "query", defaultQuery) //nolint:errcheck
+		level.Warn(c.logger).Log("msg", "query result comparison failed", "err", err, "query", defaultQuery)
 		c.resultsComparedTotal.WithLabelValues(comparisonFailed, defaultQuery).Inc()
 		return
 	}
@@ -177,7 +177,7 @@ func (c *QueryClient) runAdditionalQuery(start, end time.Time, step time.Duratio
 func (c *QueryClient) runQueryAndCollectStats(start, end time.Time, step time.Duration, query string) ([]model.SamplePair, error) {
 	samples, err := c.runQuery(start, end, step, query)
 	if err != nil {
-		level.Error(c.logger).Log("msg", "failed to execute query", "err", err, "query", query) //nolint:errcheck
+		level.Error(c.logger).Log("msg", "failed to execute query", "err", err, "query", query)
 		c.queriesTotal.WithLabelValues(queryFailed, query).Inc()
 	}
 
