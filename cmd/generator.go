@@ -28,7 +28,8 @@ var (
 	queryMaxAge            = kingpin.Flag("query-max-age", "How back in the past metrics can be queried at most.").Default("24h").Duration()
 	additionalQueries      = kingpin.Flag("query-additional-queries", "PromQL queries to run in addition to the default.").Strings()
 	tenantsCount           = kingpin.Flag("tenants-count", "Number of tenants to fake.").Default("1").Int()
-	seriesCount            = kingpin.Flag("series-count", "Number of series to generate for each tenant.").Default("1000").Int()
+	seriesCount            = kingpin.Flag("series-count", "Number of sinewave series to generate for each tenant.").Default("1000").Int()
+	sawtoothCount          = kingpin.Flag("sawtooth-count", "Number of sawtooth series to generate for each tenant.").Default("0").Int()
 	extraLabelCount        = kingpin.Flag("extra-labels-count", "Number of extra labels to generate for series.").Default("0").Int()
 	serverMetricsPort      = kingpin.Flag("server-metrics-port", "The port where metrics are exposed.").Default("9900").Int()
 )
@@ -65,6 +66,7 @@ func main() {
 			WriteBatchSize:   *remoteBatchSize,
 			UserID:           userID,
 			SeriesCount:      *seriesCount,
+			SawtoothCount:    *sawtoothCount,
 			ExtraLabels:      *extraLabelCount,
 		}, logger)
 

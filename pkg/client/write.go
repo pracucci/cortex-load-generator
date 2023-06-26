@@ -33,7 +33,8 @@ type WriteClientConfig struct {
 	UserID string
 
 	// Number of series to generate per write request.
-	SeriesCount int
+	SeriesCount   int
+	SawtoothCount int
 
 	// Number of extra labels to generate per write request.
 	ExtraLabels int
@@ -81,7 +82,12 @@ func (c *WriteClient) run() {
 
 func (c *WriteClient) writeSeries() {
 	ts := alignTimestampToInterval(time.Now(), c.cfg.WriteInterval)
-	series := generateSineWaveSeries(ts, c.cfg.SeriesCount, c.cfg.ExtraLabels)
+	value := generateSineWaveValue(ts)
+	series := generateSeries("cortex_load_generator_sine_wave", ts, value, c.cfg.SeriesCount, c.cfg.ExtraLabels)
+	if c.cfg.SawtoothCount > 0 {
+		value := generateSawtoothValue(ts)
+		series = append(series, generateSeries("cortex_load_generator_sawtooth", ts, value, c.cfg.SawtoothCount, c.cfg.ExtraLabels)...)
+	}
 
 	// Honor the batch size.
 	wg := sync.WaitGroup{}
@@ -162,14 +168,13 @@ func alignTimestampToInterval(ts time.Time, interval time.Duration) time.Time {
 	return time.Unix(0, (ts.UnixNano()/int64(interval))*int64(interval))
 }
 
-func generateSineWaveSeries(t time.Time, seriesCount, extraLabels int) []*prompb.TimeSeries {
+func generateSeries(name string, t time.Time, value float64, seriesCount, extraLabels int) []*prompb.TimeSeries {
 	out := make([]*prompb.TimeSeries, 0, seriesCount)
-	value := generateSineWaveValue(t)
 
 	for i := 1; i <= seriesCount; i++ {
 		labels := []*prompb.Label{{
 			Name:  "__name__",
-			Value: "cortex_load_generator_sine_wave",
+			Value: name,
 		}, {
 			Name:  "wave",
 			Value: strconv.Itoa(i),
@@ -197,4 +202,10 @@ func generateSineWaveValue(t time.Time) float64 {
 	period := float64(40 * (15 * time.Second))
 	radians := float64(t.UnixNano()) / period * 2 * math.Pi
 	return math.Sin(radians)
+}
+
+func generateSawtoothValue(t time.Time) float64 {
+	// With a 15-second scrape interval this gives a ten-minute period
+	period := float64(40 * (15 * time.Second))
+	return math.Mod(float64(t.UnixNano()), period) / period
 }
