@@ -108,7 +108,7 @@ func (c *WriteClient) writeSeries() {
 
 			err := c.send(ctx, req)
 			if err != nil {
-				level.Error(c.logger).Log("msg", "failed to write series", "err", err) //nolint:errcheck
+				level.Error(c.logger).Log("msg", "failed to write series", "err", err)
 			}
 		}(o)
 	}
@@ -142,7 +142,7 @@ func (c *WriteClient) send(ctx context.Context, req *prompb.WriteRequest) error 
 	if err != nil {
 		return err
 	}
-	defer httpResp.Body.Close() //nolint:errcheck
+	defer httpResp.Body.Close()
 
 	if httpResp.StatusCode/100 != 2 {
 		scanner := bufio.NewScanner(io.LimitReader(httpResp.Body, maxErrMsgLen))
