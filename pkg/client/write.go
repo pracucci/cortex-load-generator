@@ -9,6 +9,7 @@ import (
 	"math"
 	"net/http"
 	"net/url"
+	"sort"
 	"strconv"
 	"sync"
 	"time"
@@ -34,6 +35,10 @@ type WriteClientConfig struct {
 
 	// Number of series to generate per write request.
 	SeriesCount int
+
+	// SeriesChurnPeriod is the time period during which all series gradually churn.
+	// 0 to disable churning.
+	SeriesChurnPeriod time.Duration
 
 	// Number of extra labels to generate per write request.
 	ExtraLabels int
@@ -81,7 +86,7 @@ func (c *WriteClient) run() {
 
 func (c *WriteClient) writeSeries() {
 	ts := alignTimestampToInterval(time.Now(), c.cfg.WriteInterval)
-	series := generateSineWaveSeries(ts, c.cfg.SeriesCount, c.cfg.ExtraLabels)
+	series := generateSineWaveSeries(ts, c.cfg.SeriesCount, c.cfg.ExtraLabels, c.cfg.SeriesChurnPeriod)
 
 	// Honor the batch size.
 	wg := sync.WaitGroup{}
@@ -162,24 +167,53 @@ func alignTimestampToInterval(ts time.Time, interval time.Duration) time.Time {
 	return time.Unix(0, (ts.UnixNano()/int64(interval))*int64(interval))
 }
 
-func generateSineWaveSeries(t time.Time, seriesCount, extraLabels int) []*prompb.TimeSeries {
+func generateSineWaveSeries(t time.Time, seriesCount, extraLabelsCount int, churnPeriod time.Duration) []*prompb.TimeSeries {
 	out := make([]*prompb.TimeSeries, 0, seriesCount)
 	value := generateSineWaveValue(t)
 
-	for i := 1; i <= seriesCount; i++ {
-		labels := []*prompb.Label{{
+	// Generate the extra labels.
+	extraLabels := make([]*prompb.Label, 0, extraLabelsCount)
+	for j := 0; j < extraLabelsCount; j++ {
+		extraLabels = append(extraLabels, &prompb.Label{
+			Name:  fmt.Sprintf("extraLabel%d", j),
+			Value: "default",
+		})
+	}
+
+	for seriesID := 1; seriesID <= seriesCount; seriesID++ {
+		labels := make([]*prompb.Label, 0, 3+extraLabelsCount)
+		labels = append(labels, &prompb.Label{
 			Name:  "__name__",
 			Value: "cortex_load_generator_sine_wave",
-		}, {
+		}, &prompb.Label{
 			Name:  "wave",
-			Value: strconv.Itoa(i),
-		}}
-		for j := 0; j < extraLabels; j++ {
+			Value: strconv.Itoa(seriesID),
+		})
+
+		// Add extra labels.
+		labels = append(labels, extraLabels...)
+
+		// Add a label to simulate churning series.
+		if churnPeriod > 0 {
+			// Spread churning series over the "churn period" we compute the churn ID
+			// starting from the current time, shifted by the series ID. Then the value
+			// is rounded so that it changes every "churn period".
+			churnID := t.Add((churnPeriod/time.Duration(seriesCount))*time.Duration(seriesID)).Unix() / int64(churnPeriod.Seconds())
+
 			labels = append(labels, &prompb.Label{
-				Name:  fmt.Sprintf("extraLabel%d", j),
-				Value: "default",
+				Name:  "churn",
+				Value: fmt.Sprintf("%d", churnID),
 			})
 		}
+
+		// Ensure labels are sorted.
+		sort.Slice(labels, func(i, j int) bool {
+			if labels[i].Name != labels[j].Name {
+				return labels[i].Name < labels[j].Name
+			}
+			return labels[i].Value < labels[j].Value
+		})
+
 		out = append(out, &prompb.TimeSeries{
 			Labels: labels,
 			Samples: []prompb.Sample{{
