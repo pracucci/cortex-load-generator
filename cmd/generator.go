@@ -32,6 +32,7 @@ var (
 	seriesChurnPeriod      = kingpin.Flag("series-churn-period", "How frequently the series should churn. Each series will churn over this duration, and series churning time is spread over the configured period (they will not churn all at the same time). 0 to disable churning.").Default("0").Duration()
 	extraLabelCount        = kingpin.Flag("extra-labels-count", "Number of extra labels to generate for series.").Default("0").Int()
 	serverMetricsPort      = kingpin.Flag("server-metrics-port", "The port where metrics are exposed.").Default("9900").Int()
+	tenantIDPrefix         = kingpin.Flag("tenant-id-prefix", "Tenant ID prefix. The user IDs will be generated as \"<tenant-id-prefix>-<i>\" for every i in [0, tenants-count)").Default("load-generator").String()
 )
 
 func main() {
@@ -56,7 +57,7 @@ func main() {
 	wg.Add(*tenantsCount)
 
 	for t := 1; t <= *tenantsCount; t++ {
-		userID := fmt.Sprintf("load-generator-%d", t)
+		userID := fmt.Sprintf("%s-%d", *tenantIDPrefix, t)
 
 		writeClient := client.NewWriteClient(client.WriteClientConfig{
 			URL:               **remoteURL,
